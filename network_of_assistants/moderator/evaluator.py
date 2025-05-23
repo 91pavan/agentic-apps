@@ -7,6 +7,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from typing import Optional, List
 
 from poirot.sdk.decorators import agent, workflow
+from poirot.sdk.instrumentations.agp import AGPInstrumentor
 
 SYSTEM_PROMPT = """
 You are observing: a moderator agent in a chat with a user and several

@@ -4,11 +4,20 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.13"
 dependencies = [
-    "agp"
+    "agp",
+    "poirot-sdk==0.1.1558"
 ]
 
 [tool.uv.sources]
 agp = { workspace = true }
+poirot-sdk = [
+  { index = "cisco-internal" },
+]
+
+[[tool.uv.index]]
+name = "cisco-internal"
+url = "https://artifactory.devhub-cloud.cisco.com/artifactory/api/pypi/outshift-pypi/simple"
+explicit = true
 
 [build-system]
 requires = ["pdm-backend"]

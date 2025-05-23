@@ -9,8 +9,11 @@ from evaluator import EvaluatorAgent
 from poirot.sdk.decorators import agent, graph
 from poirot.sdk import Poirot
 from poirot.sdk.connectors.agp import AGPConnector, process_agp_msg
+from poirot.sdk.instrumentations.agp import AGPInstrumentor
 
 Poirot.init("moderator-agent", api_endpoint=os.getenv("OTLP_HTTP_ENDPOINT", "http://host.docker.internal:4318"))
+
+AGPInstrumentor().instrument()
 
 def list_available_agents(agents_dir):
     available_agents = {}
@@ -71,10 +74,7 @@ async def main(args):
     )
     # register the agent with the AGP connector
     agp_connector.register("moderator_agent")
-    
-    agents = supervisor_agent.get_agents()
-    evaluator_agent = agents["evaluator"]
-    moderator_agent = agents["moderator"]
+
 
     agents_dir = args.agents_dir
 
@@ -84,11 +84,14 @@ async def main(args):
 
     @process_agp_msg("moderator_agent")
     async def on_message_received(message: bytes):
+
+        agents = supervisor_agent.get_agents()
+        evaluator_agent = agents["evaluator"]
+        moderator_agent = agents["moderator"]
         # Decode the message from bytes to string
         decoded_message = message.decode("utf-8")
         json_message = json.loads(decoded_message)
 
-        print(f"Received message: {json_message}")
         chat_history.append(json_message)
 
         if json_message["type"] == "ChatMessage":
