@@ -1,3 +1,5 @@
+import asyncio
+import traceback
 import click
 import json
 import os
@@ -11,6 +13,15 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.core.llms import ChatMessage
 from llama_index.core.memory import ChatMemoryBuffer
 from agp import AGP
+
+from poirot.sdk.connectors.agp import AGPConnector, process_agp_msg
+from poirot.sdk.instrumentations.agp import AGPInstrumentor
+from poirot.sdk import Poirot
+
+
+Poirot.init("pdf-assistant-agent", api_endpoint=os.getenv("OTLP_HTTP_ENDPOINT", "http://host.docker.internal:4318"))
+
+AGPInstrumentor().instrument()
 
 
 async def amain(doc_dir, llm_type, llm_endpoint, llm_key, assistant_id):
@@ -53,33 +64,47 @@ async def amain(doc_dir, llm_type, llm_endpoint, llm_key, assistant_id):
         shared_space="chat",
     )
 
+    # initialize the AGP connector
+    agp_connector = AGPConnector(
+        remote_org="organization",
+        remote_namespace="namespace",
+        shared_space="chat",
+    )
+    # register the agent with the AGP connector
+    agp_connector.register("pdf_assistant_agent")
+
     await agp.init()
 
     memory = ChatMemoryBuffer.from_defaults(token_limit=40000)
 
+    @process_agp_msg("pdf_assistant_agent")
     async def on_message_received(message: bytes):
-        decoded_message = message.decode("utf-8")
-        data = json.loads(decoded_message)
+        try:
+            decoded_message = message.decode("utf-8")
+            data = json.loads(decoded_message)
 
-        if data["type"] == "ChatMessage":
-            print(f"{data['author']}: {data['message']}")
-            memory.put(
-                ChatMessage(role="user", content=f"{data['author']}: {data['message']}")
-            )
+            if data["type"] == "ChatMessage":
+                print(f"{data['author']}: {data['message']}")
+                memory.put(
+                    ChatMessage(role="user", content=f"{data['author']}: {data['message']}")
+                )
 
-        elif data["type"] == "RequestToSpeak" and data["target"] == assistant_id:
-            print("Moderator requested me to speak")
-            handler = agent.run(user_msg=decoded_message, memory=memory)
-            response = await handler
-            # Publish a message to the AGP server
-            message = {
-                "type": "ChatMessage",
-                "author": assistant_id,
-                "message": str(response),
-            }
-            message_json = json.dumps(message)
-            print(f"Responding with: {str(response)}")
-            await agp.publish(msg=message_json.encode("utf-8"))
+            elif data["type"] == "RequestToSpeak" and data["target"] == assistant_id:
+                print("Moderator requested me to speak")
+                handler = agent.run(user_msg=decoded_message, memory=memory)
+                response = await handler
+                # Publish a message to the AGP server
+                message = {
+                    "type": "ChatMessage",
+                    "author": assistant_id,
+                    "message": str(response),
+                }
+                message_json = json.dumps(message)
+                print(f"Responding with: {str(response)}")
+                await agp.publish(msg=message_json.encode("utf-8"))
+        except Exception as e:
+            print(f"Error processing message: {e}")
+            print(traceback.print_exc())
 
     # Connect to the AGP server and start receiving messages
     await agp.receive(callback=on_message_received)

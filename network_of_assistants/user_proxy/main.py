@@ -4,6 +4,15 @@ from agp import AGP
 import json
 import os
 
+from poirot.sdk import Poirot
+from poirot.sdk.instrumentations.agp import AGPInstrumentor
+from poirot.sdk.connectors.agp import AGPConnector, process_agp_msg
+
+
+Poirot.init("user-proxy-agent", api_endpoint=os.getenv("OTLP_HTTP_ENDPOINT", "http://host.docker.internal:4318"))
+
+AGPInstrumentor().instrument()
+
 
 class color:
     PURPLE = "\033[95m"
@@ -43,6 +52,15 @@ async def main(args):
         shared_space="chat",
     )
 
+    # initialize the AGP connector
+    agp_connector = AGPConnector(
+        remote_org="organization",
+        remote_namespace="namespace",
+        shared_space="chat",
+    )
+    # register the agent with the AGP connector
+    agp_connector.register("user_proxy_agent")
+
     print("Welcome to the NoA! Type your message. Type 'quit' to exit.")
     await agp.init()
     asyncio.create_task(agp.receive(callback=command_callback))
@@ -53,19 +71,23 @@ async def main(args):
             print("Exiting the application. Goodbye!")
             break
 
-        message = {
-            "type": "ChatMessage",
-            "author": "user-proxy",
-            "message": inputMessage,
-        }
+        if inputMessage == "":
+            print("Please enter a message.")
+            continue
+        if inputMessage is not None:
+            message = {
+                "type": "ChatMessage",
+                "author": "user-proxy",
+                "message": inputMessage,
+            }
 
-        # clean the request to speak event ready to be told to speak again
-        request_to_speak_event.clear()
+            # clean the request to speak event ready to be told to speak again
+            request_to_speak_event.clear()
 
-        await agp.publish(msg=json.dumps(message).encode("utf-8"))
+            await agp.publish(msg=json.dumps(message).encode("utf-8"))
 
-        # wait until we're told to speak again
-        await request_to_speak_event.wait()
+            # wait until we're told to speak again
+            await request_to_speak_event.wait()
 
 
 def run():
